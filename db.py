@@ -1,37 +1,87 @@
 import sqlite3
 
-# Verbindung zur DB (wird erstellt, wenn sie nicht existiert)
-conn = sqlite3.connect('wkn_ticker.db')
-cursor = conn.cursor()
+DB_NAME = 'wkn_ticker.db'
 
-# Tabelle erstellen (falls nicht existiert)
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS wkn_mapping (
-    wkn TEXT PRIMARY KEY,
-    ticker TEXT NOT NULL
-)
-''')
+def get_connection():
+    conn = sqlite3.connect(DB_NAME)
+    return conn
 
-# Beispiel-Daten einfügen
-sample_data = [
-    ('846900', 'BMW.DE'),
-    ('865985', 'DAI.DE'),
-    ('A0B7FY', 'SAP.DE'),
-    ('851399', 'VOW3.DE')
-]
+def init_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS wkn_mapping (
+        wkn TEXT PRIMARY KEY,
+        ticker TEXT NOT NULL
+    )
+    ''')
 
-cursor.executemany('INSERT OR IGNORE INTO wkn_mapping (wkn, ticker) VALUES (?, ?)', sample_data)
-conn.commit()
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS portfolio (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker TEXT NOT NULL,
+        wkn TEXT
+    )
+    ''')
 
-# WKN suchen
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS portfolio_positions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker TEXT NOT NULL,
+        wkn TEXT,
+        amount REAL NOT NULL,
+        purchase_date TEXT NOT NULL
+    )
+    ''')
+
+    conn.commit()
+    conn.close()
+
+def add_wkn_ticker(wkn, ticker):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        if wkn == "":
+            cursor.execute('INSERT INTO wkn_mapping (wkn, ticker) VALUES (NULL, ?)', (ticker,))
+        else:
+            cursor.execute('INSERT OR REPLACE INTO wkn_mapping (wkn, ticker) VALUES (?, ?)', (wkn, ticker))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
+
 def get_ticker_from_wkn(wkn):
+    conn = get_connection()
+    cursor = conn.cursor()
     cursor.execute('SELECT ticker FROM wkn_mapping WHERE wkn = ?', (wkn,))
     result = cursor.fetchone()
+    conn.close()
     return result[0] if result else None
 
-# Beispiel Nutzung
-wkn_input = '846900'
-ticker = get_ticker_from_wkn(wkn_input)
-print(f"WKN {wkn_input} entspricht dem Ticker {ticker}")
+def get_all_wkn_tickers():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT wkn, ticker FROM wkn_mapping')
+    results = cursor.fetchall()
+    conn.close()
+    return results
 
-conn.close()
+def add_portfolio_position(ticker, wkn, amount, purchase_date):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+    INSERT INTO portfolio_positions (ticker, wkn, amount, purchase_date)
+    VALUES (?, ?, ?, ?)
+    ''', (ticker, wkn, amount, purchase_date))
+    conn.commit()
+    conn.close()
+
+def get_portfolio_positions():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT ticker, wkn, amount, purchase_date FROM portfolio_positions ORDER BY purchase_date DESC')
+    results = cursor.fetchall()
+    conn.close()
+    return results
